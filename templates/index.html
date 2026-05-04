@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ÔN THI LỊCH SỬ 12 - by Trung</title>
+    <style>
+        body { 
+            background: #121212; 
+            color: white; 
+            font-family: 'Segoe UI', Roboto, sans-serif; 
+            display: flex; 
+            justify-content: center; 
+            padding: 10px; 
+            margin: 0; 
+            min-height: 100vh;
+        }
+        .quiz-container { 
+            width: 100%; 
+            max-width: 650px; 
+            background: #1e1e1e; 
+            padding: 20px; 
+            border-radius: 15px; 
+            border: 1px solid #333; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            align-self: flex-start;
+            margin-top: 20px;
+        }
+        h1 { 
+            color: #bb86fc; 
+            text-align: center; 
+            font-size: 1.5rem;
+            letter-spacing: 1px; 
+            text-transform: uppercase; 
+            margin-bottom: 20px; 
+        }
+        #status-container { margin-bottom: 20px; text-align: center; background: #252525; padding: 15px; border-radius: 10px; }
+        .progress-bg { width: 100%; background: #333; border-radius: 10px; height: 10px; margin-top: 10px; overflow: hidden; }
+        #progress-bar { width: 0%; height: 100%; background: linear-gradient(90deg, #bb86fc, #03dac6); transition: 0.5s ease; }
+        
+        .question { 
+            font-size: 1.15em; 
+            margin-bottom: 15px; 
+            border-bottom: 1px solid #333; 
+            padding-bottom: 10px; 
+            line-height: 1.4; 
+            color: #e0e0e0; 
+        }
+        .option { 
+            background: #2c2c2c; 
+            padding: 16px; 
+            margin: 12px 0; 
+            border-radius: 10px; 
+            cursor: pointer; 
+            transition: all 0.2s ease; 
+            border: 1px solid transparent; 
+            -webkit-tap-highlight-color: transparent;
+        }
+        .option:active { transform: scale(0.98); background: #3d3d3d; }
+        
+        .correct { background: #1b5e20 !important; border-color: #4caf50 !important; color: #fff !important; font-weight: bold; }
+        .wrong { background: #b71c1c !important; border-color: #f44336 !important; }
+        
+        #next-btn { 
+            width: 100%; 
+            padding: 16px; 
+            background: #bb86fc; 
+            border: none; 
+            border-radius: 10px; 
+            color: black; 
+            font-weight: bold; 
+            margin-top: 15px; 
+            cursor: pointer; 
+            display: none;
+            font-size: 1rem;
+        }
+        .hint-box { color:#03dac6; margin-top:15px; font-weight:bold; padding:12px; background:#252525; border-radius:8px; border-left: 4px solid #03dac6; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div class="quiz-container">
+        <h1>LỊCH SỬ 12</h1>
+        
+        <div id="status-container" style="display: none;">
+            <div id="status-text">Đang chuẩn bị câu hỏi...</div>
+            <div class="progress-bg"><div id="progress-bar"></div></div>
+        </div>
+
+        <div id="quiz-content">
+            <div id="quiz">
+                <div class="question" id="q-text">Đang kết nối hệ thống...</div>
+                <div id="options-container"></div>
+            </div>
+            <button id="next-btn" onclick="nextQuestion()">CÂU TIẾP THEO</button>
+        </div>
+    </div>
+
+    <script>
+        let questions = [];
+        let currentIdx = 0;
+        let score = 0;
+
+        // CHỐNG F12 CƠ BẢN: Chặn chuột phải và các phím tắt devtools
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.onkeydown = function(e) {
+            if(e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74 || e.keyCode == 67)) || (e.ctrlKey && e.keyCode == 85)) {
+                return false;
+            }
+        };
+
+        async function startQuiz() {
+            try {
+                const res = await fetch('/get_questions');
+                const data = await res.json();
+                if (data.is_generating) {
+                    document.getElementById('status-container').style.display = 'block';
+                    document.getElementById('quiz-content').style.display = 'none';
+                    checkProgress();
+                } else {
+                    questions = data;
+                    showQuestion();
+                }
+            } catch (e) {
+                document.getElementById('q-text').innerText = "Lỗi: Không tìm thấy Server Python!";
+            }
+        }
+
+        async function checkProgress() {
+            try {
+                const res = await fetch('/get_status');
+                const data = await res.json();
+                const percent = data.percent || 0;
+                document.getElementById('progress-bar').style.width = percent + '%';
+                document.getElementById('status-text').innerText = `AI Đang quét PDF: ${percent}%`;
+                if (percent < 100) setTimeout(checkProgress, 2000);
+                else setTimeout(() => location.reload(), 1500);
+            } catch (e) { setTimeout(checkProgress, 3000); }
+        }
+
+        function showQuestion() {
+            if (questions.length === 0) return;
+            const q = questions[currentIdx];
+            document.getElementById('q-text').innerText = `Câu ${currentIdx + 1}: ${q.question}`;
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+            document.getElementById('next-btn').style.display = 'none';
+
+            q.options.forEach(opt => {
+                const div = document.createElement('div');
+                div.className = 'option';
+                div.innerText = opt;
+                // Gọi hàm check trên server thay vì truyền tham số answer vào đây
+                div.onclick = () => checkAnswerOnServer(div, opt, currentIdx);
+                container.appendChild(div);
+            });
+        }
+
+        async function checkAnswerOnServer(el, selected, qIdx) {
+            const options = document.querySelectorAll('.option');
+            options.forEach(opt => opt.style.pointerEvents = 'none');
+
+            try {
+                // Gửi lựa chọn lên server để kiểm tra bảo mật
+                const res = await fetch('/check_answer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question_idx: qIdx, answer: selected })
+                });
+                const result = await res.json();
+
+                if (result.is_correct) {
+                    el.classList.add('correct');
+                    score++;
+                } else {
+                    el.classList.add('wrong');
+                    const hint = document.createElement('div');
+                    hint.className = 'hint-box';
+                    hint.innerHTML = `💡 Đáp án đúng là: ${result.correct_answer}`;
+                    document.getElementById('quiz').appendChild(hint);
+                    
+                    // Highlight đáp án đúng
+                    options.forEach(opt => {
+                        if (opt.innerText === result.correct_answer) opt.classList.add('correct');
+                    });
+                }
+            } catch (e) {
+                alert("Lỗi kết nối server khi kiểm tra đáp án!");
+            }
+
+            document.getElementById('next-btn').style.display = 'block';
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+
+        function nextQuestion() {
+            currentIdx++;
+            const oldHints = document.querySelectorAll('.hint-box');
+            oldHints.forEach(h => h.remove());
+            
+            if (currentIdx < questions.length) {
+                showQuestion();
+                window.scrollTo(0,0);
+            }
+            else showResult();
+        }
+
+        function showResult() {
+            let loiPhe = "";
+            let color = "#03dac6";
+            let tiLe = score / questions.length;
+
+            if (tiLe === 1) { loiPhe = "Quá đỉnh luôn! Toàn diện 10/10! 🏆"; color = "#ffeb3b"; }
+            else if (tiLe >= 0.8) { loiPhe = "Giỏi lắm! Cố gắng phát huy! 🔥"; }
+            else if (tiLe >= 0.5) { loiPhe = "Tạm ổn, cần ôn kỹ hơn. 📚"; }
+            else { loiPhe = "Hơi yếu rồi! Tập trung học lại đi 💪"; color = "#ff5252"; }
+
+            document.getElementById('quiz').innerHTML = `
+                <div style="text-align: center; padding: 10px;">
+                    <h2 style="color: #bb86fc;">XONG RỒI!</h2>
+                    <p style="font-size: 1.2em;">Điểm của bạn: <span style="color: ${color}; font-weight: bold;">${score}/${questions.length}</span></p>
+                    <div style="background: #252525; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid ${color};">
+                        <i style="color: ${color};">${loiPhe}</i>
+                    </div>
+                    <button onclick="location.reload()" style="padding: 15px 30px; background: #bb86fc; border-radius: 10px; cursor: pointer; border:none; font-weight:bold; color:black; margin-top:10px; width: 100%;">LÀM BỘ MỚI</button>
+                </div>`;
+            document.getElementById('next-btn').style.display = 'none';
+        }
+
+        window.onload = startQuiz;
+    </script>
+</body>
+</html>
